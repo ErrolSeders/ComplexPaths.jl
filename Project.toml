@@ -3,6 +3,9 @@ uuid = "a25e2219-d8cc-47b2-bc88-9b0dc7d4b2a3"
 authors = ["ErrolSeders <errolbucy@gmail.com>"]
 version = "1.0.0-DEV"
 
+[deps]
+Intervals = "d8418881-c3e1-53bb-8760-2df7ec849ed5"
+
 [compat]
 julia = "1.6"
 

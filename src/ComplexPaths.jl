@@ -1,22 +1,118 @@
 module ComplexPaths
 
-export AbstractPath, Path, CirclePath, pointsonpath
+using Intervals
+
+import Intervals: (..)
+
+export AbstractPath, Path, CirclePath, PiecewisePath, pointsonpath, (..)
 
 """
     Path(parameterization::Function, start::Complex, end::Complex)
 
     # Feilds
     - `parameterization::Function`: A parametric function of a complex path.
-    - `start::Number`: Initial value for the parametric function.
-    - `end::Number`: Final value for the parametric function.
+    - `start::Real`: Initial value for the parametric function.
+    - `end::Real`: Final value for the parametric function.
 """
 
 abstract type AbstractPath end
 
 struct Path <: AbstractPath
     parameterization::Function
-    start::Number
-    ending::Number
+    domain::AbstractInterval
+end
+
+struct ClosedPath <: AbstractPath
+    parameterization::Function
+    domain::AbstractInterval
+    function ClosedPath(parameterization,domain) 
+        path = Path(parameterization,domain)
+        @assert isclosed(path)
+        return new(parameterization,domain)
+    end
+end
+
+#Map values linaerly from X:[a,b] -> Y:[c,d]
+function _map_values(t,X::Interval,Y::Interval)::Real
+
+    a = X.first
+    b = X.last
+    c = Y.first 
+    d = Y.last
+
+    t′ = c + ((d-c)/(b-a))*(t-a)
+
+    return t′
+
+end
+
+function _intervaldist(α::AbstractPath)
+    D = α.domain
+    lesser, greater = D.first < D.last ? (D.first, D.last) : (D.last, D.first)
+    return abs(greater - lesser)
+end
+
+#Build a dictionary mapping a range spanning all paths into their constituant domains.
+function _build_piecewise_dict(P1, Pn...)
+    
+    out = Dict{Interval,Path}()
+
+    P_mag = _intervaldist(P1)
+    out[0.0..P_mag] = P1
+    lv = P_mag
+    
+    if length(Pn) ≥ 1
+        for P ∈ Pn
+            P_mag = _intervaldist(P)
+            pair = Interval{Open,Closed}(lv,lv+P_mag) => P
+            push!(out,pair)
+           
+            lv += P_mag
+        end
+    end
+
+    return lv, out
+
+end
+  
+function _map_call(t,key,value)
+    t_map = _map_values(t, key, value.domain)
+    f = value.parameterization
+    return f(t_map)
+end
+
+function _call_piecewise(t::Real, D::AbstractDict)
+    for (key,value) ∈ D
+        if t ∈ key
+            return key, _map_call(t,key,value)
+        end
+    end
+end
+
+function _call_piecewise(t::Real, D::AbstractDict, previous::Interval)
+    if t ∈ previous
+        value = D[previous]
+        return previous, _map_call(t,previous,value)
+    else
+        return _call_piecewise(t,D)
+    end
+end
+
+# Create a path with a dictionary switch case mapping t values to their domains.
+struct PiecewisePath <: AbstractPath
+    parameterization::Function
+    domain::AbstractInterval
+    piecewise::Dict{Interval,Path}
+    _call_piecewise_internal(t) = _call_piecewise(t,piecewise)
+    _call_piecewise_internal(t,prev) = _call_piecewise(t,piecewise,prev)
+    function PiecewisePath(Ps...)
+        domain_size, piecewise = _build_piecewise_dict(Ps...)
+        return new(_call_piecewise_internal,0.0..domain_size,piecewise)
+    end
+    function PiecewisePath(parameterization,domain)
+        domain_size, piecewise = _build_piecewise_dict(Path(parameterization,domain))
+        return new(_call_piecewise_internal,0.0..domain_size,piecewise)
+    end
 end
 
 """
@@ -24,7 +120,7 @@ end
 
     Define a circular path of radius `r` centered around the origin. 
 """
-CirclePath(r::Real)::Path = Path(t -> (r*ℯ^(t*1im)),0,2π)
+CirclePath(r::Real)::Path = Path(t -> (r*ℯ^(t*1im)),0..2π)
 
 """
     pointsonpath(P::Path, n::Integer)
@@ -33,30 +129,54 @@ CirclePath(r::Real)::Path = Path(t -> (r*ℯ^(t*1im)),0,2π)
 """
 function pointsonpath(P::AbstractPath, n::Integer)::Vector
     @assert n > 0 "n must be a positive non-zero integer"
-    return [P.parameterization(t) for t in range(P.start, P.ending, length=n)]
+    D = P.domain
+    return [P.parameterization(t) for t in range(D.first, D.last, length=n)]
 end 
+
+function pointsonpath(P::PiecewisePath, n::Integer)::Vector
+
+    @assert n > 0 "n must be a positive non-zero integer"
+    D = P.domain
+    prev = (first ∘ keys)(P.piecewise)
+    
+    out = []
+
+    for t ∈ range(D.first, D.last, length=n)
+        prev, val = P.parameterization(t,prev)
+        push!(out,val)
+    end
+
+    return out
+end
 
 """
     *(α::AbstractPath, β::AbstractPath)
 
     Concatenate two paths together
 """
-function *(α::AbstractPath, β::AbstractPath)
-    @assert α.ending == β.start "Paths must meet at endpoint."
-    α_par = α.parameterization
-    β_par = β.parameterization
-    new_par = t -> t ≤ α.ending ? α.parameterization(t) : β.parameterization(t)
-    return Path(new_par, α.start, β.ending)
+
+#ToDo: Consider how t should be mapped to some range (what range? [0,1]?) for each of the functions. In the case that α & β share that same t values.
+#   What does it mean to Concatenate a path with itself if it is closed? Should it run through the path twice?
+#   Is this expected behavior or should self concatenation error. 
+
+function Base.:*(α::AbstractPath, β::AbstractPath)::PiecewisePath
+
+    return PiecewisePath(α,β)
+end
+
+function Base.:*(P1::AbstractPath, Pn::AbstractPath...)::PiecewisePath
+
+    return PiecewisePath(P1, Pn...)
 end
 
 """
     isclosed(γ::AbstractPath)::Bool
 
-    Check if `γ` is a closed Path. i.e. the start and end points are the same (within a tolerance for floating point nonsense).
+    Check if `γ` is a closed Path. i.e. the start and end points are the same (within a tolerance because of floating point math).
 
 """
 function isclosed(γ::AbstractPath)::Bool
-    return γ.parameterization(γ.start) ≈ γ.parameterization(γ.ending) atol=0.0001
+    return γ.parameterization(γ.start) ≈ γ.parameterization(γ.ending)
 end
 
 end # module ComplexPaths
