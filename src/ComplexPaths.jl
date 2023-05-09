@@ -4,24 +4,28 @@ using Intervals
 
 import Intervals: (..)
 
-export AbstractPath, Path, CirclePath, PiecewisePath, pointsonpath, (..)
-
-"""
-    Path(parameterization::Function, start::Complex, end::Complex)
-
-    # Feilds
-    - `parameterization::Function`: A parametric function of a complex path.
-    - `start::Real`: Initial value for the parametric function.
-    - `end::Real`: Final value for the parametric function.
-"""
+export AbstractPath, Path, ClosedPath, CirclePath, PiecewisePath, pointsonpath, (..)
 
 abstract type AbstractPath end
 
+"""@docs
+Path(parameterization::Function, domain::AbstractInterval)
+
+# Feilds
+- `parameterization::Function`: A parametric function of a complex path.
+- `start::Real`: Initial value for the parametric function.
+- `end::Real`: Final value for the parametric function.
+"""
 struct Path <: AbstractPath
     parameterization::Function
     domain::AbstractInterval
 end
 
+"""@docs
+ClosedPath(parameterization::Function, domain::AbstractInterval)
+
+Same as Path with added closure assertion.
+"""
 struct ClosedPath <: AbstractPath
     parameterization::Function
     domain::AbstractInterval
@@ -98,7 +102,11 @@ function _call_piecewise(t::Real, D::AbstractDict, previous::Interval)
     end
 end
 
-# Create a path with a dictionary switch case mapping t values to their domains.
+"""@docs
+PiecewisePath(parameterization::Function, domain::AbstractInterval)
+
+A path composed of several parameterizations mapped across one domain.
+"""
 struct PiecewisePath <: AbstractPath
     parameterization::Function
     domain::AbstractInterval
@@ -115,17 +123,17 @@ struct PiecewisePath <: AbstractPath
     end
 end
 
-"""
-    CirclePath(r::Real)
+"""@docs
+CirclePath(r::Real)
 
-    Define a circular path of radius `r` centered around the origin. 
+Define a circular path of radius `r` centered around the origin. 
 """
 CirclePath(r::Real)::Path = Path(t -> (r*ℯ^(t*1im)),0..2π)
 
-"""
-    pointsonpath(P::Path, n::Integer)
+"""@docs
+pointsonpath(P::AbstractPath, n::Integer)
 
-    Return a vector of `n` evenly spaced points along path `P`.
+Return a vector of `n` evenly spaced points along path `P`.
 """
 function pointsonpath(P::AbstractPath, n::Integer)::Vector
     @assert n > 0 "n must be a positive non-zero integer"
@@ -149,16 +157,11 @@ function pointsonpath(P::PiecewisePath, n::Integer)::Vector
     return out
 end
 
+"""@docs
+*(α::AbstractPath, β::AbstractPath)::PiecewisePath
+
+Concatenate two paths together, yeilding a PiecewisePath
 """
-    *(α::AbstractPath, β::AbstractPath)
-
-    Concatenate two paths together
-"""
-
-#ToDo: Consider how t should be mapped to some range (what range? [0,1]?) for each of the functions. In the case that α & β share that same t values.
-#   What does it mean to Concatenate a path with itself if it is closed? Should it run through the path twice?
-#   Is this expected behavior or should self concatenation error. 
-
 function Base.:*(α::AbstractPath, β::AbstractPath)::PiecewisePath
 
     return PiecewisePath(α,β)
@@ -169,11 +172,10 @@ function Base.:*(P1::AbstractPath, Pn::AbstractPath...)::PiecewisePath
     return PiecewisePath(P1, Pn...)
 end
 
-"""
-    isclosed(γ::AbstractPath)::Bool
+"""@docs
+isclosed(γ::AbstractPath)::Bool
 
-    Check if `γ` is a closed Path. i.e. the start and end points are the same (within a tolerance because of floating point math).
-
+Check if `γ` is a closed Path. i.e. the start and end points are the same (within a tolerance because of floating point math).
 """
 function isclosed(γ::AbstractPath)::Bool
     return γ.parameterization(γ.start) ≈ γ.parameterization(γ.ending)
