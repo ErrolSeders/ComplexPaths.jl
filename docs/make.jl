@@ -4,5 +4,5 @@ using ComplexPaths
 makedocs(sitename="ComplexPaths.jl")
 
 deploydocs(
-    repo = "github.com/ErrolSeders/ComplexPaths.jl.git",
+    repo = "github.com/ErrolSeders/ComplexPaths.jl.git", push_preview=true
 )
